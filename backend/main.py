@@ -24,6 +24,12 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
+import sys
+
+# Fix for Windows ProactorEventLoop conflict with websockets
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException

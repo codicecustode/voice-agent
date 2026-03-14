@@ -16,11 +16,15 @@ Deepgram handles Hindi, Tamil, and English natively in the "nova-2" model.
 voice/stt.py — Real-time STT using Deepgram SDK v3
 """
 
+"""
+voice/stt.py — Deepgram SDK 3.2.7 compatible
+"""
+
 import asyncio
 from dataclasses import dataclass
 from typing import Callable, Awaitable
 
-from deepgram import DeepgramClient, LiveOptions, LiveTranscriptionEvents
+from deepgram import Deepgram
 from loguru import logger
 
 from config import settings
@@ -37,7 +41,7 @@ class TranscriptResult:
 
 class STTClient:
     def __init__(self):
-        self.client = DeepgramClient(settings.deepgram_api_key)
+        self.client = Deepgram(settings.deepgram_api_key)
 
     def session(self, on_interim, on_final):
         return _STTSession(self.client, on_interim, on_final)
@@ -53,73 +57,75 @@ class _STTSession:
         self._detected_language = "en"
 
     async def __aenter__(self):
-        options = LiveOptions(
-            model="nova-2",
-            encoding="linear16",
-            sample_rate=16000,
-            channels=1,
-            interim_results=True,
-            utterance_end_ms=800,
-            smart_format=True,
+        self._connection = await self._client.transcription.live({
+            "model": "nova-2",
+            "language": "en-US",
+            "encoding": "linear16",
+            "sample_rate": 16000,
+            "channels": 1,
+            "interim_results": True,
+            "utterance_end_ms": 800,
+            "smart_format": True,
+        })
+
+        self._connection.registerHandler(
+            self._connection.event.TRANSCRIPT_RECEIVED,
+            self._on_transcript
         )
-
-        self._connection = self._client.listen.asynclive.v("1")
-
-        self._connection.on(LiveTranscriptionEvents.Transcript, self._on_transcript)
-        self._connection.on(LiveTranscriptionEvents.UtteranceEnd, self._on_utterance_end)
-        self._connection.on(LiveTranscriptionEvents.Error, self._on_error)
-
-        if not await self._connection.start(options):
-            raise RuntimeError("Failed to start Deepgram connection")
+        self._connection.registerHandler(
+            self._connection.event.CLOSE,
+            lambda c: logger.info("Deepgram closed")
+        )
+        self._connection.registerHandler(
+            self._connection.event.ERROR,
+            lambda e: logger.error(f"Deepgram error: {e}")
+        )
 
         logger.info("Deepgram STT session started")
         return self._send_audio
 
     async def _send_audio(self, chunk: bytes):
         if self._connection:
-            await self._connection.send(chunk)
+            self._connection.send(chunk)
 
-    async def _on_transcript(self, _client, result, **kwargs):
+    async def _on_transcript(self, transcript):
         try:
-            alt = result.channel.alternatives[0]
-            text = alt.transcript.strip()
+            if not transcript.get("is_final") and not transcript.get("speech_final"):
+                # Interim result
+                text = transcript.get("channel", {}).get(
+                    "alternatives", [{}])[0].get("transcript", "").strip()
+                if text:
+                    result = TranscriptResult(
+                        text=text,
+                        language=self._detected_language,
+                        is_final=False,
+                        confidence=0.5,
+                    )
+                    await self._on_interim(result)
+                return
+
+            alt = transcript.get("channel", {}).get("alternatives", [{}])[0]
+            text = alt.get("transcript", "").strip()
             if not text:
                 return
 
-            lang_hint = getattr(result, "detected_language", None)
-            language = detect_language(text, deepgram_hint=lang_hint)
+            language = detect_language(text)
             self._detected_language = language
+            self._current_text = text
 
-            transcript = TranscriptResult(
+            logger.debug(f"STT final [{language}]: {text}")
+
+            result = TranscriptResult(
                 text=text,
                 language=language,
-                is_final=result.is_final,
-                confidence=alt.confidence,
-            )
-
-            if result.is_final:
-                self._current_text = text
-                logger.debug(f"STT final [{language}]: {text}")
-            else:
-                asyncio.create_task(self._on_interim(transcript))
-
-        except Exception as e:
-            logger.error(f"Error processing transcript: {e}")
-
-    async def _on_utterance_end(self, _client, utterance_end, **kwargs):
-        if self._current_text:
-            logger.info(f"Utterance ended: '{self._current_text}' [{self._detected_language}]")
-            result = TranscriptResult(
-                text=self._current_text,
-                language=self._detected_language,
                 is_final=True,
-                confidence=1.0,
+                confidence=alt.get("confidence", 1.0),
             )
-            asyncio.create_task(self._on_final(result))
+            await self._on_final(result)
             self._current_text = ""
 
-    async def _on_error(self, _client, error, **kwargs):
-        logger.error(f"Deepgram error: {error}")
+        except Exception as e:
+            logger.error(f"Transcript error: {e}")
 
     async def __aexit__(self, *args):
         if self._connection:
