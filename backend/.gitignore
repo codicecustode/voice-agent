@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+*.env
+.env/
+venv/
+ENV/
+.env*
+
+# VSCode
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Misc
+*.sqlite3
+*.db
+*.bak
+*.swp
+*.swo
+
+# Docker
+*.pid
+
+# Test
+htmlcov/
+.coverage
+.cache/
+pytest_cache/
+
+# Others
+*.tar.gz
+*.zip
+*.tmp
+
+# Ignore secrets
+secrets.json

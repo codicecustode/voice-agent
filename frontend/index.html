@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clinical Voice Agent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f4f0;
+      color: #2c2c2a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      width: 640px;
+      max-width: 96vw;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 500;
+      color: #2c2c2a;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #d3d1c7;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input {
+      flex: 1;
+      padding: 9px 12px;
+      border: 1px solid #d3d1c7;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+    input:focus { border-color: #1D9E75; }
+
+    button {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #connect-btn    { background: #1D9E75; color: white; }
+    #disconnect-btn { background: #993c1d; color: white; }
+
+    #status {
+      font-size: 14px;
+      font-weight: 500;
+      color: #0f6e56;
+      padding: 4px 0;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #888780;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #transcript {
+      max-height: 300px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .turn {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .turn.patient .role { color: #185FA5; }
+    .turn.agent   .role { color: #0f6e56; }
+    .role  { font-weight: 500; white-space: nowrap; }
+    .lang  { font-size: 11px; color: #888780; }
+    .text  { color: #2c2c2a; }
+
+    #log {
+      max-height: 160px;
+      overflow-y: auto;
+      font-size: 12px;
+      font-family: monospace;
+      color: #5f5e5a;
+      line-height: 1.6;
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #1D9E75;
+      animation: pulse 1.2s ease-in-out infinite;
+      margin-right: 6px;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏥 Clinical Voice Agent</h1>
+
+    <div class="card">
+      <div class="row">
+        <input id="phone" type="tel" placeholder="Phone (+91...)" />
+        <input id="name"  type="text" placeholder="Patient name" />
+      </div>
+      <div class="row">
+        <button id="connect-btn">Connect</button>
+        <button id="disconnect-btn" disabled>Disconnect</button>
+        <span id="status">Not connected</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="section-label">Conversation</span>
+      <div id="transcript">
+        <div class="turn" style="color:#888780;font-size:13px;">
+          Connect and start speaking…
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="section-label">Debug log</span>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/app.ts"></script>
+</body>
+</html>
