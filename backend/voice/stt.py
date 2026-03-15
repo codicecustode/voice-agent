@@ -1,23 +1,17 @@
 """
-voice/stt.py — Real-time speech-to-text using Deepgram Nova-2.
+voice/stt.py — Real-time speech-to-text using Deepgram Nova-2 (SDK v2.12.0).
 
 How it works:
   1. The frontend sends raw PCM audio chunks over a WebSocket.
   2. We forward those chunks to Deepgram's streaming WebSocket.
-  3. Deepgram fires two kinds of events:
-       - interim_results: partial transcripts (we use for barge-in detection)
-       - UtteranceEnd:    signals the user stopped speaking → we trigger the agent
+  3. Deepgram fires transcript events:
+       - is_final=False  → interim result, used for barge-in detection
+       - speech_final=True → user stopped speaking, trigger the agent
   4. We pass back the final transcript + detected language.
 
-Deepgram handles Hindi, Tamil, and English natively in the "nova-2" model.
-"""
-
-"""
-voice/stt.py — Real-time STT using Deepgram SDK v3
-"""
-
-"""
-voice/stt.py — Deepgram SDK 3.2.7 compatible
+Deepgram Nova-2 with language="multi" handles Hindi, Tamil, and English.
+detected_language from Deepgram is used as the primary language hint;
+langdetect is the fallback.
 """
 
 import asyncio
@@ -59,7 +53,7 @@ class _STTSession:
     async def __aenter__(self):
         self._connection = await self._client.transcription.live({
             "model": "nova-2",
-            "language": "en-US",
+            "language": "multi",    # enables Hindi, Tamil, and English detection
             "encoding": "linear16",
             "sample_rate": 16000,
             "channels": 1,
@@ -104,12 +98,16 @@ class _STTSession:
                     await self._on_interim(result)
                 return
 
-            alt = transcript.get("channel", {}).get("alternatives", [{}])[0]
+            channel = transcript.get("channel", {})
+            alt = channel.get("alternatives", [{}])[0]
             text = alt.get("transcript", "").strip()
             if not text:
                 return
 
-            language = detect_language(text)
+            # Use Deepgram's own detected_language as the primary hint;
+            # langdetect is the fallback (see lang_detect.detect_language priority).
+            deepgram_lang = channel.get("detected_language") or alt.get("detected_language")
+            language = detect_language(text, deepgram_hint=deepgram_lang)
             self._detected_language = language
             self._current_text = text
 
