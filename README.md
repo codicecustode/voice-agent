@@ -84,7 +84,7 @@ ngrok http 8000
          ┌──────────────────┼──────────────────┐
          ▼                  ▼                  ▼
      [STT]             [Lang detect]         [TTS]
-  Deepgram Nova-2      langdetect         ElevenLabs
+    Deepgram Nova-2      langdetect         Azure Speech
   Hindi/Tamil/EN       + Deepgram hint    streaming chunks
          │                  │                  ▲
          └──────────────────┼──────────────────┘
@@ -174,7 +174,7 @@ Target: **< 450 ms** from speech end to first audio byte.
 | Redis session load | < 2 ms | In-memory, single key |
 | LLM first token | 180 ms | GPT-4o streaming, `max_tokens=300` |
 | DB tool call (if triggered) | 30 ms | asyncpg connection pool, indexed queries |
-| TTS first chunk | 80 ms | `eleven_turbo_v2_5`, PCM stream |
+| TTS first chunk | 80 ms | Azure Speech REST, raw PCM stream |
 | Network (local) | 10 ms | WebSocket, no serialisation overhead |
 | **Total** | **~382 ms** | Well under 450ms target |
 
@@ -182,8 +182,8 @@ Target: **< 450 ms** from speech end to first audio byte.
 
 The single biggest latency optimisation is **not waiting for the full LLM response
 before starting TTS**. The `SentenceBuffer` in `voice/tts.py` watches the LLM
-token stream and flushes to ElevenLabs as soon as a sentence boundary appears
-(`. ! ? । \n`). ElevenLabs starts generating audio for sentence 1 while the LLM
+token stream and flushes to Azure Speech as soon as a sentence boundary appears
+(`. ! ? । \n`). Azure Speech starts generating audio for sentence 1 while the LLM
 is still writing sentence 2.
 
 ### Where to see latency logs
@@ -204,7 +204,7 @@ Prometheus metrics are at `http://localhost:8001/metrics`. Key metric:
   the `language="multi"` parameter. We also run `langdetect` as a fallback.
 - **Persistence**: Detected language is saved to Redis session on first turn.
   For returning patients, their stored language preference from the DB is used.
-- **TTS voice selection**: Each language maps to a specific ElevenLabs voice ID
+- **TTS voice selection**: Each language maps to a specific Azure neural voice
   configured in `.env`. The `get_voice_id()` function selects the right voice.
 - **LLM prompting**: The system prompt explicitly instructs the LLM to respond in
   the detected language. Hindi and Tamil keywords are included in intent detection.
@@ -251,7 +251,7 @@ Validations enforced:
 |---|---|---|
 | Deepgram over Whisper | 80ms streaming vs 1-3s batch | Whisper is free but too slow |
 | GPT-4o over smaller models | Better tool-calling reliability | Llama-3 via Groq (faster, cheaper, less reliable at tool use) |
-| ElevenLabs Turbo over standard | 80ms vs 300ms first chunk | Standard has better voice quality |
+| Azure Speech REST over SDK | Simple HTTP deployment path and raw PCM output | SDK can provide lower-level controls |
 | Redis session over in-memory | Survives restarts, supports horizontal scaling | In-memory is simpler but not production-safe |
 | asyncpg over SQLAlchemy ORM only | Direct SQL for row-locking clarity | ORM alone can obscure locking behaviour |
 
@@ -259,8 +259,8 @@ Validations enforced:
 
 ## Known limitations
 
-1. **Tamil TTS quality**: ElevenLabs' Tamil voice options are limited. Consider
-   Azure Cognitive Services or Google Cloud TTS for Tamil in production.
+1. **Tamil TTS quality**: Azure neural Tamil voices are good but can still sound
+  less natural for some medical terms; validate with real patient prompts.
 2. **Barge-in on mobile Safari**: The Web Audio API's `ScriptProcessorNode` is
    deprecated — a future version should use `AudioWorkletNode`.
 3. **No speaker diarization**: Multi-speaker calls (e.g. patient with a family
