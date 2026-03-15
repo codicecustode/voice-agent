@@ -75,6 +75,8 @@ ngrok http 8000
 
 ## Architecture overview
 
+![Voice AI Agent Architecture](docs/voice_ai_agent_architecture_v2.svg)
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Transport (WebSocket)                         │
@@ -91,7 +93,7 @@ ngrok http 8000
                             ▼
               ┌─────────────────────────┐
               │   Agent Orchestrator    │
-              │   GPT-4o streaming      │
+              │   Groq streaming        │
               │   tool-calling loop     │
               └──────────┬──────────────┘
                          │ calls
@@ -158,7 +160,8 @@ Past interactions:
   - [2025-01-01] Called to reschedule, rebooked for 10 Jan.
 ```
 
-**How summaries are generated**: At session end, the orchestrator calls GPT-4o with
+**How summaries are generated**: At session end, the orchestrator calls the configured
+Groq chat model with
 the full conversation and asks for a one-sentence summary. This is stored async —
 it doesn't block the call.
 
@@ -166,17 +169,17 @@ it doesn't block the call.
 
 ## Latency breakdown
 
-Target: **< 450 ms** from speech end to first audio byte.
+Target: **< 450 ms** end-to-end from speech end to first audio byte.
 
-| Stage | Target | Implementation |
+| Stage | Typical target | Implementation |
 |---|---|---|
-| Deepgram STT final | 80 ms | `utterance_end_ms=800`, streaming Nova-2 |
+| Deepgram STT final | ~80 ms | `endpointing=True`, Nova-2 `multi` model |
 | Redis session load | < 2 ms | In-memory, single key |
-| LLM first token | 180 ms | GPT-4o streaming, `max_tokens=300` |
-| DB tool call (if triggered) | 30 ms | asyncpg connection pool, indexed queries |
-| TTS first chunk | 80 ms | Azure Speech REST, raw PCM stream |
-| Network (local) | 10 ms | WebSocket, no serialisation overhead |
-| **Total** | **~382 ms** | Well under 450ms target |
+| LLM first token | ~180 ms | Groq streaming, `max_tokens=300` |
+| DB tool call (if triggered) | ~30 ms | asyncpg pool, indexed queries |
+| TTS first chunk | ~80 ms | Azure Speech SDK, sentence-boundary flush |
+| Network (local) | 10–40 ms | WebSocket transport |
+| **Total** | **~380–450 ms** | Within target on local/low-latency network |
 
 ### The parallel pipeline trick
 
@@ -188,20 +191,22 @@ is still writing sentence 2.
 
 ### Where to see latency logs
 
-Every request logs:
+Every request logs measured stage timings, for example:
 ```
-[session-id] E2E latency: 387.2ms ✅ UNDER TARGET | STT: 76ms | LLM: 183ms | TTS: 78ms
+[session-id] STT latency: 76.3ms | LLM first-token: 183.1ms | TTS first-chunk: 78.0ms
+[session-id] E2E latency: 387.2ms
 ```
 
+Actual numbers vary by API round-trip and provider response time.
 Prometheus metrics are at `http://localhost:8001/metrics`. Key metric:
-`voice_agent_e2e_latency_ms` — histogram with 450ms bucket for easy SLA monitoring.
+`voice_agent_e2e_latency_ms` — histogram with a 450 ms bucket for SLA monitoring.
 
 ---
 
 ## Multilingual handling
 
-- **Detection**: Deepgram Nova-2 detects language automatically per-utterance via
-  the `language="multi"` parameter. We also run `langdetect` as a fallback.
+- **Detection**: Deepgram Nova-2 is run with an English locale hint (`en-US`) and
+  transcript text is language-classified using `langdetect` with Deepgram hints as fallback.
 - **Persistence**: Detected language is saved to Redis session on first turn.
   For returning patients, their stored language preference from the DB is used.
 - **TTS voice selection**: Each language maps to a specific Azure neural voice
@@ -250,8 +255,8 @@ Validations enforced:
 | Decision | Why | Alternative |
 |---|---|---|
 | Deepgram over Whisper | 80ms streaming vs 1-3s batch | Whisper is free but too slow |
-| GPT-4o over smaller models | Better tool-calling reliability | Llama-3 via Groq (faster, cheaper, less reliable at tool use) |
-| Azure Speech REST over SDK | Simple HTTP deployment path and raw PCM output | SDK can provide lower-level controls |
+| Groq over OpenAI here | Lower first-token latency in this deployment | OpenAI models for potentially stronger tool consistency |
+| Azure Speech SDK over REST | Easier voice/output control in one API | REST can be simpler for stateless HTTP-only flows |
 | Redis session over in-memory | Survives restarts, supports horizontal scaling | In-memory is simpler but not production-safe |
 | asyncpg over SQLAlchemy ORM only | Direct SQL for row-locking clarity | ORM alone can obscure locking behaviour |
 

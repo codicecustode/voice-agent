@@ -206,6 +206,9 @@ class VoiceSession:
         Called when Deepgram fires UtteranceEnd with the final transcript.
         This triggers the full agent pipeline.
         """
+        # Reset latency tracker per utterance so timings are measured from
+        # this speech-end event, not from session creation.
+        self.latency = LatencyTracker(session_id=self.session_id)
         self.latency.mark_stt_final()
 
         # Update language in session if detected

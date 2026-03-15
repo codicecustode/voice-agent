@@ -226,12 +226,14 @@ class AgentOrchestrator:
                         try:
                             args = json.loads(tc_data["arguments"])
                             # Inject patient_id for tools that need it
-                            if "patient_id" in [
-                                p["name"]
-                                for p in TOOL_DEFINITIONS
-                                if p["function"]["name"] == tc_data["name"]
-                                   and "patient_id" in p["function"].get("parameters", {}).get("properties", {})
-                            ]:
+                            tool_def = next(
+                                (p for p in TOOL_DEFINITIONS
+                                 if p["function"]["name"] == tc_data["name"]),
+                                None,
+                            )
+                            if tool_def and "patient_id" in tool_def["function"].get(
+                                "parameters", {}
+                            ).get("properties", {}):
                                 args.setdefault("patient_id", patient_id)
                         except json.JSONDecodeError:
                             args = {}
