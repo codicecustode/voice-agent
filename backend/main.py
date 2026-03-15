@@ -11,8 +11,8 @@ The WebSocket message flow:
   Deepgram → sends transcript event
   Server  → runs agent orchestrator
   Orchestrator → streams text tokens
-  Server  → streams to ElevenLabs TTS
-  ElevenLabs → streams audio chunks
+    Server  → streams to Azure Speech TTS
+    Azure Speech → streams audio chunks
   Server  → sends audio bytes back to browser
 
 Barge-in: If Deepgram detects speech while we're still sending TTS audio,

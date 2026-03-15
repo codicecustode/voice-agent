@@ -1,50 +1,21 @@
-"""
-voice/tts.py — Text-to-speech using ElevenLabs streaming API.
-
-The key for low latency is STREAMING: we don't wait for ElevenLabs
-to produce the full audio file. Instead, we request audio chunks
-as the text comes in, and send the FIRST chunk back to the client
-as fast as possible.
-
-Latency strategy:
-  1. Agent produces first sentence/clause → we flush it to TTS immediately.
-  2. ElevenLabs streams back audio bytes chunk by chunk.
-  3. We forward those bytes over WebSocket to the browser.
-  4. Browser starts playing audio BEFORE the agent finishes generating text.
-
-This "parallel pipeline" is what gets us under 450ms.
-"""
+"""voice/tts.py — Text-to-speech using Azure Cognitive Services Speech SDK."""
 
 import asyncio
+from xml.sax.saxutils import escape
 from typing import AsyncIterator
 
-import httpx
+import azure.cognitiveservices.speech as speechsdk
 from loguru import logger
 
-from config import settings
+from config import settings, get_azure_tts_key, get_azure_tts_region
 from agent.lang_detect import get_voice_id
-
-# ElevenLabs streaming endpoint
-ELEVENLABS_STREAM_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
-
-# Optimized TTS settings for low latency
-TTS_SETTINGS = {
-    "model_id": "eleven_turbo_v2_5",    # Fastest ElevenLabs model
-    "voice_settings": {
-        "stability": 0.5,
-        "similarity_boost": 0.75,
-        "style": 0.0,
-        "use_speaker_boost": False,      # Disable for speed
-    },
-    "output_format": "pcm_16000",        # Raw PCM, no MP3 decode overhead
-}
 
 
 class TTSClient:
     """Streaming TTS client."""
 
     def __init__(self):
-        self._http = httpx.AsyncClient(timeout=30)
+        self._config_error_reported = False
 
     async def stream_audio(
         self,
@@ -59,38 +30,70 @@ class TTSClient:
             async for chunk in tts.stream_audio("Hello", "en"):
                 await websocket.send_bytes(chunk)
         """
-        voice_id = get_voice_id(language)
-        url = ELEVENLABS_STREAM_URL.format(voice_id=voice_id)
+        azure_key = get_azure_tts_key()
+        azure_region = get_azure_tts_region()
 
-        headers = {
-            "xi-api-key": settings.elevenlabs_api_key,
-            "Content-Type": "application/json",
-        }
+        if not azure_key or not azure_region:
+            if not self._config_error_reported:
+                logger.error(
+                    "Azure TTS is not configured. Set AZURE_TTS_KEY/AZURE_TTS_REGION "
+                    "(or AZURE_SPEECH_KEY/AZURE_SPEECH_REGION)."
+                )
+                self._config_error_reported = True
+            return
 
-        body = {
-            "text": text,
-            **TTS_SETTINGS,
-        }
+        voice_name = get_voice_id(language)
 
-        logger.debug(f"TTS request [{language}] voice={voice_id}: '{text[:60]}...'")
+        ssml = (
+            "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' "
+            "xml:lang='en-US'>"
+            f"<voice name='{voice_name}'>{escape(text)}</voice>"
+            "</speak>"
+        )
+
+        logger.debug(f"TTS request [{language}] voice={voice_name}: '{text[:60]}...'")
 
         try:
-            async with self._http.stream("POST", url, json=body, headers=headers) as response:
-                if response.status_code != 200:
-                    error = await response.aread()
-                    logger.error(f"ElevenLabs error {response.status_code}: {error}")
-                    return
+            def synthesize_once() -> speechsdk.SpeechSynthesisResult:
+                speech_config = speechsdk.SpeechConfig(
+                    subscription=azure_key,
+                    region=azure_region,
+                )
+                speech_config.speech_synthesis_voice_name = voice_name
+                speech_config.set_speech_synthesis_output_format(
+                    speechsdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm
+                )
+                synthesizer = speechsdk.SpeechSynthesizer(
+                    speech_config=speech_config,
+                    audio_config=None,
+                )
+                return synthesizer.speak_ssml_async(ssml).get()
 
-                async for chunk in response.aiter_bytes(chunk_size=4096):
+            result = await asyncio.to_thread(synthesize_once)
+
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                audio = bytes(result.audio_data or b"")
+                for idx in range(0, len(audio), 4096):
+                    chunk = audio[idx : idx + 4096]
                     if chunk:
                         yield chunk
+                return
+
+            if result.reason == speechsdk.ResultReason.Canceled:
+                details = speechsdk.SpeechSynthesisCancellationDetails.from_result(result)
+                logger.error(
+                    f"Azure TTS canceled: reason={details.reason} code={details.error_code} details={details.error_details}"
+                )
+                return
+
+            logger.error(f"Azure TTS failed with reason: {result.reason}")
 
         except Exception as e:
-            logger.error(f"TTS streaming error: {e}")
+            logger.error(f"Azure TTS SDK error: {e}")
             raise
 
     async def close(self):
-        await self._http.aclose()
+        return
 
 
 class SentenceBuffer:

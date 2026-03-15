@@ -17,10 +17,14 @@ class Settings(BaseSettings):
 
     # Voice
     deepgram_api_key: str = ""
-    elevenlabs_api_key: str = ""
-    elevenlabs_voice_en: str = "21m00Tcm4TlvDq8ikWAM"
-    elevenlabs_voice_hi: str = ""
-    elevenlabs_voice_ta: str = ""
+    azure_tts_key: str = ""
+    azure_tts_region: str = ""
+    # Backward-compatible aliases if you used Azure naming in portal notes/scripts.
+    azure_speech_key: str = ""
+    azure_speech_region: str = ""
+    azure_tts_voice_en: str = "en-IN-NeerjaNeural"
+    azure_tts_voice_hi: str = "hi-IN-SwaraNeural"
+    azure_tts_voice_ta: str = "ta-IN-PallaviNeural"
 
     # Database
     database_url: str = "postgresql+asyncpg://voiceagent:voiceagent@localhost:5432/voiceagent"
@@ -40,3 +44,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_azure_tts_key() -> str:
+    return settings.azure_tts_key or settings.azure_speech_key
+
+
+def get_azure_tts_region() -> str:
+    return settings.azure_tts_region or settings.azure_speech_region

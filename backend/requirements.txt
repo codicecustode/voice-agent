@@ -10,8 +10,8 @@ anthropic==0.28.0
 # STT
 deepgram-sdk==3.2.7
 
-# TTS (ElevenLabs)
-elevenlabs==1.1.2
+# TTS
+azure-cognitiveservices-speech==1.42.0
 
 # Database
 asyncpg==0.29.0

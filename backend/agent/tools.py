@@ -57,7 +57,10 @@ TOOL_DEFINITIONS = [
                         "description": "ISO date string YYYY-MM-DD for desired date",
                     },
                     "limit": {
-                        "type": "integer",
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"},
+                        ],
                         "description": "Max number of slots to return (default 5)",
                         "default": 5,
                     },
@@ -173,6 +176,20 @@ class ToolDispatcher:
             "get_patient_appointments": get_patient_appointments,
         }
 
+    @staticmethod
+    def _normalize_arguments(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Coerce common LLM argument mismatches to expected tool types."""
+        normalized = dict(arguments)
+
+        if tool_name == "get_available_slots":
+            limit = normalized.get("limit")
+            if isinstance(limit, str):
+                stripped = limit.strip()
+                if stripped.isdigit():
+                    normalized["limit"] = int(stripped)
+
+        return normalized
+
     async def dispatch(self, tool_name: str, arguments: dict) -> str:
         """
         Execute a tool and return its result as a JSON string.
@@ -185,7 +202,8 @@ class ToolDispatcher:
 
         logger.info(f"Tool call: {tool_name}({json.dumps(arguments, default=str)})")
         try:
-            result = await func(**arguments)
+            normalized_args = self._normalize_arguments(tool_name, arguments)
+            result = await func(**normalized_args)
             logger.info(f"Tool result: {json.dumps(result, default=str)[:200]}")
             return json.dumps(result, default=str)
         except Exception as e:

@@ -21,11 +21,11 @@ DetectorFactory.seed = 0
 # Supported languages
 SUPPORTED_LANGUAGES = {"en", "hi", "ta"}
 
-# Map language code → ElevenLabs voice ID
+# Map language code -> configured TTS voice name
 VOICE_MAP = {
-    "en": settings.elevenlabs_voice_en,
-    "hi": settings.elevenlabs_voice_hi or settings.elevenlabs_voice_en,
-    "ta": settings.elevenlabs_voice_ta or settings.elevenlabs_voice_en,
+    "en": settings.azure_tts_voice_en,
+    "hi": settings.azure_tts_voice_hi or settings.azure_tts_voice_en,
+    "ta": settings.azure_tts_voice_ta or settings.azure_tts_voice_en,
 }
 
 # Language names for logging / prompts
@@ -64,5 +64,5 @@ def detect_language(text: str, deepgram_hint: str | None = None) -> str:
 
 
 def get_voice_id(language: str) -> str:
-    """Return the ElevenLabs voice ID for a given language code."""
+    """Return the configured TTS voice name for a given language code."""
     return VOICE_MAP.get(language, VOICE_MAP["en"])

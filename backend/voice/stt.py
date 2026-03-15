@@ -64,7 +64,7 @@ class _STTSession:
             "sample_rate": 16000,
             "channels": 1,
             "interim_results": True,
-            "utterance_end_ms": 800,
+            "endpointing": True,
             "smart_format": True,
         })
 
