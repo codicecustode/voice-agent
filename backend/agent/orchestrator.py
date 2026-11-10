@@ -19,8 +19,7 @@ import json
 from typing import AsyncIterator
 
 from loguru import logger
-#from openai import AsyncOpenAI
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 
 from config import settings
 from agent.memory import MemoryManager
@@ -73,8 +72,24 @@ Speak naturally as if talking to the patient directly.
 
 class AgentOrchestrator:
 
+    # Provider configs — every provider uses the OpenAI chat-completions format
+    PROVIDERS = {
+        "groq":   {"base_url": "https://api.groq.com/openai/v1",                       "key_attr": "groq_api_key",   "default_model": "llama-3.3-70b-versatile"},
+        "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "key_attr": "gemini_api_key", "default_model": "gemini-2.5-flash"},
+        "nvidia": {"base_url": "https://integrate.api.nvidia.com/v1",                   "key_attr": "nvidia_api_key", "default_model": "nvidia/nemotron-3.5-lightning-30b-a3b"},
+    }
+
     def __init__(self):
-        self._llm = AsyncGroq(api_key=settings.groq_api_key)
+        provider_id = settings.llm_provider.lower()
+        if provider_id not in self.PROVIDERS:
+            raise ValueError(f"Unknown llm_provider '{provider_id}'. Choose: {', '.join(self.PROVIDERS)}")
+        cfg = self.PROVIDERS[provider_id]
+        api_key = getattr(settings, cfg["key_attr"], "")
+        if not api_key:
+            raise ValueError(f"{cfg['key_attr']} is not set in .env")
+        self._llm = AsyncOpenAI(base_url=cfg["base_url"], api_key=api_key)
+        self._llm_model = settings.llm_model or cfg["default_model"]
+        logger.info("LLM provider: {} | model: {}", provider_id, self._llm_model)
         self._memory = MemoryManager()
         self._tools = ToolDispatcher()
 
@@ -149,7 +164,7 @@ class AgentOrchestrator:
             text_buffer = ""
 
             stream = await self._llm.chat.completions.create(
-                model=settings.groq_model,
+                model=self._llm_model,
                 messages=messages,
                 tools=TOOL_DEFINITIONS,
                 tool_choice="auto",
@@ -293,7 +308,7 @@ class AgentOrchestrator:
             f"{t['role'].upper()}: {t['content']}" for t in history
         )
         response = await self._llm.chat.completions.create(
-            model=settings.groq_model,
+            model=self._llm_model,
             messages=[
                 {
                     "role": "user",
