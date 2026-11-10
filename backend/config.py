@@ -8,12 +8,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # LLM
+    # LLM — provider chosen by llm_provider
+    llm_provider: str = "groq"
+    llm_model: str = ""  # empty = use the provider's default
+
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
-    # LLM — Groq
+
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
+
+    gemini_api_key: str = ""
+    nvidia_api_key: str = ""
 
     # Voice
     deepgram_api_key: str = ""
